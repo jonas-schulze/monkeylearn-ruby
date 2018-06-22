@@ -28,23 +28,31 @@ module Monkeylearn
         batch_size = options[:batch_size]
         validate_batch_size batch_size
 
+        api_version = validate_api_version(options[:api_version])
         endpoint = build_endpoint(module_id, 'extract')
+
+        request_preparator = lambda do |data|
+          case api_version
+          when :v2
+            return { text_list: data }
+          when :v3
+            body = { data: data }
+            if options.key? :production_model
+              body[:production_model] = options[:production_model]
+            end
+            return body
+          end
+        end
 
         if Monkeylearn.auto_batch
           responses = (0...data.length).step(batch_size).collect do |start_idx|
-            sliced_data = {data: data.slice(start_idx, batch_size)}
-            if options.key? :production_model
-              sliced_data[:production_model] = options[:production_model]
-            end
-            request(:post, endpoint, data: sliced_data)
+            sliced_data = request_preparator.call data[start_idx, batch_size]
+            request(:post, endpoint, data: sliced_data, api_version: api_version)
           end
           return Monkeylearn::MultiResponse.new(responses)
         else
-          body = {data: data}
-          if options.key? :production_model
-              body[:production_model] = options[:production_model]
-          end
-          return request(:post, endpoint, data: body)
+          body = request_preparator.call data
+          return request(:post, endpoint, data: body, api_version: api_version)
         end
 
       end
